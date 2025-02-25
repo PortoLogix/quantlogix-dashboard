@@ -1,0 +1,18 @@
+[browser]
+serverAddress = "localhost"
+serverPort = 8511
+gatherUsageStats = false
+serverHeadless = true
+
+[server]
+address = "localhost"
+port = 8511
+baseUrlPath = ""
+enableCORS = false
+enableXsrfProtection = false
+enableWebsocketCompression = false
+maxUploadSize = 200
+maxMessageSize = 200
+
+[theme]
+base = "light"
