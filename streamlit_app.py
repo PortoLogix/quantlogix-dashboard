@@ -6,20 +6,32 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import pytz
 import pandas as pd
+import hmac
+import hashlib
 
-# Load environment variables
-load_dotenv()
+# Security functions
+def check_password():
+    """Returns `True` if the user had the correct password."""
 
-# Initialize Alpaca API
-api_key = os.getenv("APCA_API_KEY_ID")
-api_secret = os.getenv("APCA_API_SECRET_KEY")
-base_url = os.getenv("APCA_API_BASE_URL", "https://paper-api.alpaca.markets")
+    def password_entered():
+        """Checks whether a password entered by the user is correct."""
+        if hmac.compare_digest(st.session_state["password"], st.secrets["password"]):
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # Don't store the password
+        else:
+            st.session_state["password_correct"] = False
 
-api = tradeapi.REST(
-    key_id=api_key,
-    secret_key=api_secret,
-    base_url=base_url
-)
+    # Return True if the password is validated.
+    if st.session_state.get("password_correct", False):
+        return True
+
+    # Show input for password.
+    st.text_input(
+        "Password", type="password", on_change=password_entered, key="password"
+    )
+    if "password_correct" in st.session_state:
+        st.error("😕 Password incorrect")
+    return False
 
 # Page config
 st.set_page_config(page_title="QuantLogix Trading Dashboard", layout="wide")
@@ -51,57 +63,27 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-def get_performance_chart():
-    try:
-        # Get account history for the last 30 days
-        end = datetime.now(pytz.UTC)
-        start = end - timedelta(days=30)
-        
-        # Get account activities
-        activities = api.get_portfolio_history(
-            timeframe='1D',
-            date_start=start,
-            date_end=end,
-            extended_hours=True
-        )
-        
-        # Create DataFrame
-        df = pd.DataFrame({
-            'timestamp': activities.timestamp,
-            'equity': activities.equity,
-            'profit_loss': activities.profit_loss,
-            'profit_loss_pct': activities.profit_loss_pct
-        })
-        
-        # Convert timestamp to datetime
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
-        
-        # Create plot
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=df['timestamp'],
-            y=df['equity'],
-            mode='lines',
-            name='Portfolio Value',
-            line=dict(color='#00C805', width=2)
-        ))
-        
-        fig.update_layout(
-            title='Portfolio Performance (30 Days)',
-            xaxis_title='Date',
-            yaxis_title='Value ($)',
-            template='plotly_white',
-            height=400,
-            margin=dict(l=0, r=0, t=40, b=0)
-        )
-        
-        return fig
-    except Exception as e:
-        st.error(f"Error generating performance chart: {str(e)}")
-        return None
-
+# Main app logic
 def main():
+    # Check password
+    if not check_password():
+        st.stop()  # Do not continue if check_password is not True.
+        
     try:
+        # Load environment variables
+        load_dotenv()
+
+        # Initialize Alpaca API
+        api_key = st.secrets["APCA_API_KEY_ID"]
+        api_secret = st.secrets["APCA_API_SECRET_KEY"]
+        base_url = st.secrets["APCA_API_BASE_URL"]
+
+        api = tradeapi.REST(
+            key_id=api_key,
+            secret_key=api_secret,
+            base_url=base_url
+        )
+        
         # Get account info
         account = api.get_account()
         
@@ -128,7 +110,7 @@ def main():
 
         # Performance Chart
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        fig = get_performance_chart()
+        fig = get_performance_chart(api)
         if fig:
             st.plotly_chart(fig, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
@@ -188,6 +170,55 @@ def main():
         - APCA_API_SECRET_KEY
         - APCA_API_BASE_URL
         """)
+
+def get_performance_chart(api):
+    try:
+        # Get account history for the last 30 days
+        end = datetime.now(pytz.UTC)
+        start = end - timedelta(days=30)
+        
+        # Get account activities
+        activities = api.get_portfolio_history(
+            timeframe='1D',
+            date_start=start,
+            date_end=end,
+            extended_hours=True
+        )
+        
+        # Create DataFrame
+        df = pd.DataFrame({
+            'timestamp': activities.timestamp,
+            'equity': activities.equity,
+            'profit_loss': activities.profit_loss,
+            'profit_loss_pct': activities.profit_loss_pct
+        })
+        
+        # Convert timestamp to datetime
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
+        
+        # Create plot
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=df['timestamp'],
+            y=df['equity'],
+            mode='lines',
+            name='Portfolio Value',
+            line=dict(color='#00C805', width=2)
+        ))
+        
+        fig.update_layout(
+            title='Portfolio Performance (30 Days)',
+            xaxis_title='Date',
+            yaxis_title='Value ($)',
+            template='plotly_white',
+            height=400,
+            margin=dict(l=0, r=0, t=40, b=0)
+        )
+        
+        return fig
+    except Exception as e:
+        st.error(f"Error generating performance chart: {str(e)}")
+        return None
 
 if __name__ == "__main__":
     main()
